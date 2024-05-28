@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 
 namespace FileProvider.Functions
 {
@@ -16,23 +14,13 @@ namespace FileProvider.Functions
         private readonly FileService _fileService = fileService;
 
         [Function("Upload")]
-        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req, FunctionContext context)
+        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
         {
-            string uploaderName = "Anonymous";
-            if (req.Headers.TryGetValue("Authorization", out var authHeaderValues))
-            {
-                var bearerToken = authHeaderValues.FirstOrDefault()?.Split(" ").Last();
-                if (!string.IsNullOrEmpty(bearerToken))
-                {
-                    var handler = new JwtSecurityTokenHandler();
-                    var jwtToken = handler.ReadJwtToken(bearerToken);
-                    var usernameClaim = jwtToken.Claims.FirstOrDefault(claim => claim.Type == "preferred_username" || claim.Type == "name");
-                    uploaderName = usernameClaim?.Value ?? "Anonymous";
-                }
-            }
+            
             try
             {
                 var formCollection = await req.ReadFormAsync();
+                var containerName = !string.IsNullOrEmpty(req.Query["container"]) ? req.Query["container"].ToString() : "uploads";
 
                 if (formCollection.Files["file"] is IFormFile file)
                 {
@@ -40,9 +28,9 @@ namespace FileProvider.Functions
                     {
                         FileName = _fileService.SetFileName(file),
                         ContentType = file.ContentType,
-                        UploaderName = uploaderName,
+                        UploaderName = "Unknown",
                         UploadDate = DateTime.Now,
-                        ContainerName = "profilepictures"
+                        ContainerName = containerName
                     };
                     await _fileService.SetBlobContainerAsync(fileEntity.ContainerName);
                     var filePath = await _fileService.UploadFileAsync(file, fileEntity);
